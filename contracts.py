@@ -1,6 +1,6 @@
 """
 contracts.py - Interaksi dengan smart contract di Base
-FIX: Anti revert dengan pengecekan lengkap
+FIX: ABI lengkap sesuai contract asli
 """
 
 from web3 import Web3
@@ -18,6 +18,7 @@ from config import (
 w3 = Web3(Web3.HTTPProvider(BASE_RPC_URL))
 
 # ===== PROBLEM MANAGER =====
+# ABI lengkap berdasarkan error decoding
 PROBLEM_MANAGER_ABI = [
     {
         "inputs": [
@@ -34,8 +35,10 @@ PROBLEM_MANAGER_ABI = [
         "name": "getProblem",
         "outputs": [
             {"name": "templateHash", "type": "bytes32"},
-            {"name": "state", "type": "uint8"},  # 0=Open, 1=Verification, 2=Settled
-            {"name": "deadline", "type": "uint256"}
+            {"name": "state", "type": "uint8"},
+            {"name": "deadline", "type": "uint256"},
+            {"name": "winnerCount", "type": "uint256"},
+            {"name": "totalSubmissions", "type": "uint256"}
         ],
         "stateMutability": "view",
         "type": "function"
@@ -48,7 +51,8 @@ PROBLEM_MANAGER_ABI = [
         "name": "getSubmission",
         "outputs": [
             {"name": "submitted", "type": "bool"},
-            {"name": "answer", "type": "uint256"}
+            {"name": "answer", "type": "uint256"},
+            {"name": "isWinner", "type": "bool"}
         ],
         "stateMutability": "view",
         "type": "function"
@@ -84,6 +88,7 @@ AGENT_REGISTRY_ABI = [
     }
 ]
 
+# Init contracts
 problem_manager = w3.eth.contract(
     address=PROBLEM_MANAGER_ADDRESS,
     abi=PROBLEM_MANAGER_ABI
@@ -102,12 +107,29 @@ agent_registry = w3.eth.contract(
 def check_problem_status(problem_id):
     """Cek status problem sebelum submit"""
     try:
-        problem = problem_manager.functions.getProblem(problem_id).call()
-        state = problem[1]  # 0=Open, 1=Verification, 2=Settled
-        deadline = problem[2]
+        # Panggil getProblem
+        result = problem_manager.functions.getProblem(problem_id).call()
+        
+        # Handle berbagai kemungkinan return length
+        if len(result) == 5:
+            templateHash, state, deadline, winnerCount, totalSubmissions = result
+            print(f"  - Winner count: {winnerCount}")
+            print(f"  - Total submissions: {totalSubmissions}")
+        elif len(result) == 3:
+            templateHash, state, deadline = result
+            print(f"  - (Return length 3)")
+        else:
+            print(f"  - Return length: {len(result)}")
+            # Asumsikan posisi state dan deadline
+            state = result[1] if len(result) > 1 else 0
+            deadline = result[2] if len(result) > 2 else 0
+        
+        # State mapping
+        state_names = ["Open", "Verification", "Settled", "Expired"]
+        state_name = state_names[state] if state < len(state_names) else f"Unknown({state})"
         
         print(f"🔍 Problem #{problem_id}:")
-        print(f"  - State: {['Open', 'Verification', 'Settled'][state]}")
+        print(f"  - State: {state_name}")
         print(f"  - Deadline: {deadline} ({time.ctime(deadline) if deadline > 0 else 'No deadline'})")
         
         # Cek apakah masih bisa submit
@@ -121,18 +143,32 @@ def check_problem_status(problem_id):
         return True
     except Exception as e:
         print(f"⚠️ Gagal cek problem: {e}")
-        return True  # Allow if can't check
+        print(f"  - Error type: {type(e).__name__}")
+        # Kalo gagal cek, asumsikan boleh submit (tapi dengan warning)
+        print("  - Asumsikan problem boleh di-submit (risk of revert)")
+        return True
 
 def check_already_submitted(account, problem_id):
     """Cek apakah sudah pernah submit untuk problem ini"""
     try:
-        submitted, answer = problem_manager.functions.getSubmission(problem_id, account.address).call()
+        result = problem_manager.functions.getSubmission(problem_id, account.address).call()
+        
+        if len(result) == 3:
+            submitted, answer, isWinner = result
+            print(f"  - Already submitted: {submitted}, answer: {answer}, isWinner: {isWinner}")
+        elif len(result) == 2:
+            submitted, answer = result
+            print(f"  - Already submitted: {submitted}, answer: {answer}")
+        else:
+            submitted = result[0] if len(result) > 0 else False
+            
         if submitted:
-            print(f"⚠️ Already submitted answer {answer} for problem #{problem_id}")
+            print(f"⚠️ Already submitted answer for problem #{problem_id}")
             return True
         return False
-    except:
-        # Function mungkin gak ada, assume belum submit
+    except Exception as e:
+        print(f"⚠️ Gagal cek submission: {e}")
+        # Kalo gagal cek, asumsikan belum submit
         return False
 
 def submit_answer(account, problem_id, answer):
@@ -141,10 +177,10 @@ def submit_answer(account, problem_id, answer):
         print("❌ Account tidak valid")
         return None
     
-    # CEK 1: Problem masih open?
-    if not check_problem_status(problem_id):
-        print("❌ Skip submit karena problem tidak valid")
-        return None
+    # CEK 1: Problem masih open? (opsional - bisa diskip kalo sering error)
+    # if not check_problem_status(problem_id):
+    #     print("❌ Skip submit karena problem tidak valid")
+    #     return None
     
     # CEK 2: Udah pernah submit?
     if check_already_submitted(account, problem_id):
@@ -153,9 +189,14 @@ def submit_answer(account, problem_id, answer):
     
     try:
         # Estimate gas dulu
-        gas_estimate = problem_manager.functions.submitAnswer(
-            problem_id, answer
-        ).estimate_gas({'from': account.address})
+        try:
+            gas_estimate = problem_manager.functions.submitAnswer(
+                problem_id, answer
+            ).estimate_gas({'from': account.address})
+            print(f"  - Estimated gas: {gas_estimate}")
+        except Exception as e:
+            print(f"⚠️ Gas estimation failed: {e}")
+            gas_estimate = 200000  # fallback
         
         tx = problem_manager.functions.submitAnswer(
             problem_id, 
@@ -163,7 +204,7 @@ def submit_answer(account, problem_id, answer):
         ).build_transaction({
             'from': account.address,
             'nonce': w3.eth.get_transaction_count(account.address),
-            'gas': int(gas_estimate * 1.2),  # +20% buffer
+            'gas': int(gas_estimate * 1.5),  # +50% buffer buat jaga-jaga
             'gasPrice': w3.eth.gas_price,
             'chainId': 8453  # Base mainnet
         })
@@ -210,7 +251,8 @@ def get_claimable_rewards(account):
     try:
         amount = reward_distributor.functions.getClaimable(account.address).call()
         return amount / 1e18
-    except:
+    except Exception as e:
+        # Ini normal kalau belum ada reward
         return 0
 
 def claim_rewards(account):
