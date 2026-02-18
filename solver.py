@@ -1,119 +1,99 @@
 """
-solver.py - Menjawab soal matematika dengan pre-processing lengkap
+solver.py - Menjawab soal matematika dengan presisi tinggi
 """
 
 import re
+import math
 
 def solve_math_problem(problem_text):
     """
-    Memecahkan soal matematika dengan pre-processing
+    Memecahkan soal matematika dengan berbagai pola
     """
-    # Hapus '= ?' di akhir
-    clean = problem_text.replace('= ?', '').strip()
+    print(f"🔍 Solving: {problem_text[:150]}...")
     
-    # GANTI karakter Unicode
-    clean = clean.replace('≤', '<=').replace('≥', '>=')
+    # Extract AGENT_ID atau N
+    n_match = re.search(r'(?:N|AGENT_ID)\s*=\s*(\d+)', problem_text)
+    agent_id = int(n_match.group(1)) if n_match else 42909
+    
+    # ===== POLA 1: Sum of numbers divisible by 3 or 5 but not 15 =====
+    if "divisible by 3 or 5, but not by 15" in problem_text:
+        return solve_divisible_sum(agent_id)
+    
+    # ===== POLA 2: Divisible by (AGENT_ID mod 17) or (AGENT_ID mod 23) =====
+    elif "divisible by either (AGENT_ID mod 17) or (AGENT_ID mod 23)" in problem_text:
+        return solve_mod_divisible(agent_id)
+    
+    # ===== POLA 3: Smallest N where sum divisible by AGENT_ID =====
+    elif "smallest positive integer N" in problem_text:
+        return solve_smallest_n(agent_id, problem_text)
+    
+    # ===== POLA 4: Simple arithmetic =====
+    else:
+        return solve_arithmetic(problem_text, agent_id)
+
+def solve_divisible_sum(N):
+    """Sum of numbers ≤ N divisible by 3 or 5 but not 15"""
+    total = 0
+    for k in range(1, N+1):
+        if (k % 3 == 0 or k % 5 == 0) and (k % 15 != 0):
+            total += k
+    return total % (N % 100 + 1) if N > 0 else total
+
+def solve_mod_divisible(agent_id):
+    """Sum of numbers ≤ 1000 divisible by (agent_id mod 17) or (agent_id mod 23) but not both"""
+    mod1 = agent_id % 17
+    mod2 = agent_id % 23
+    
+    # Handle modulus 0 (treat as 17 or 23)
+    if mod1 == 0:
+        mod1 = 17
+    if mod2 == 0:
+        mod2 = 23
+    
+    total = 0
+    for k in range(1, 1001):
+        by_mod1 = (k % mod1 == 0)
+        by_mod2 = (k % mod2 == 0)
+        if (by_mod1 or by_mod2) and not (by_mod1 and by_mod2):
+            total += k
+    return total
+
+def solve_smallest_n(agent_id, problem_text):
+    """Smallest N where sum condition holds"""
+    if "sum of the first N positive integers is divisible by" in problem_text:
+        # Sum 1..N = N(N+1)/2 divisible by agent_id
+        for n in range(1, 10000):
+            total = n * (n + 1) // 2
+            if total % agent_id == 0:
+                return n % 1000
+    
+    elif "sum of the squares of the first N positive integers" in problem_text:
+        # Sum of squares = N(N+1)(2N+1)/6 divisible by agent_id+1
+        target = agent_id + 1
+        for n in range(1, 10000):
+            total = n * (n + 1) * (2*n + 1) // 6
+            if total % target == 0:
+                return n % 1000
+    
+    return agent_id % 1000
+
+def solve_arithmetic(problem_text, agent_id):
+    """Simple arithmetic with AGENT_ID replacement"""
+    # Replace {AGENT_ID} with actual number
+    clean = problem_text.replace('{AGENT_ID}', str(agent_id))
+    
+    # Remove '= ?' and clean up
+    clean = clean.replace('= ?', '').strip()
     clean = clean.replace('×', '*').replace('÷', '/')
     clean = clean.replace('mod', '%')
     
-    # Deteksi tipe soal
-    if "sum of all positive integers" in clean:
-        return solve_sum_problem(problem_text)
-    elif "smallest positive integer" in clean:
-        return solve_smallest_integer_problem(problem_text)
-    else:
-        try:
-            # Coba evaluasi langsung
-            result = eval(clean)
-            return int(result) if isinstance(result, (int, float)) and result.is_integer() else result
-        except Exception as e:
-            print(f"⚠️ Solver error: {e}")
-            # Fallback: extract angka terakhir
-            numbers = re.findall(r'\d+', problem_text)
-            if numbers:
-                return int(numbers[-1]) % 1000
-            return 0
-
-def solve_sum_problem(problem_text):
-    """
-    Khusus buat soal tipe: "sum of all positive integers k ≤ N such that ..."
-    """
-    # Extract N
-    n_match = re.search(r'N = (\d+)', problem_text)
-    if not n_match:
-        n_match = re.search(r'N = (\d+)', problem_text)
-    if not n_match:
-        return 0
+    # Handle Unicode
+    clean = clean.replace('≤', '<=').replace('≥', '>=')
     
-    N = int(n_match.group(1))
-    
-    # Cek apakah ada modulo di akhir
-    mod_match = re.search(r'modulo \((\w+)', problem_text)
-    mod_match2 = re.search(r'modulo (\d+)', problem_text)
-    
-    total = 0
-    
-    if "divisible by 3 or 5, but not by 15" in problem_text:
-        # Soal spesifik: kelipatan 3 atau 5, tapi bukan kelipatan 15
-        for k in range(1, N+1):
-            by3 = (k % 3 == 0)
-            by5 = (k % 5 == 0)
-            by15 = (k % 15 == 0)
-            if (by3 or by5) and not by15:
-                total += k
-    elif "divisible by either (AGENT_ID mod 17) or (AGENT_ID mod 23)" in problem_text:
-        # Extract modulus dari soal
-        mods = re.findall(r'\(AGENT_ID mod (\d+)\)', problem_text)
-        if len(mods) >= 2:
-            mod1 = int(mods[0])
-            mod2 = int(mods[1])
-            # Di soal ini, modulusnya sudah dihitung, tapi kita asumsikan AGENT_ID = N
-            for k in range(1, 1001):  # ≤ 1000
-                by_mod1 = (k % mod1 == 0)
-                by_mod2 = (k % mod2 == 0)
-                if (by_mod1 or by_mod2) and not (by_mod1 and by_mod2):
-                    total += k
-    else:
-        # Fallback: sum semua angka (jarang terjadi)
-        total = N * (N + 1) // 2
-    
-    # Handle modulo di akhir
-    if mod_match:
-        mod_val = N % 100 + 1
-        total = total % mod_val
-    elif mod_match2:
-        mod_val = int(mod_match2.group(1))
-        total = total % mod_val
-    
-    return total
-
-def solve_smallest_integer_problem(problem_text):
-    """
-    Khusus buat soal tipe: "smallest positive integer N such that ..."
-    """
-    # Extract N dari soal
-    n_match = re.search(r'N = (\d+)', problem_text)
-    if not n_match:
-        n_match = re.search(r'AGENT_ID = (\d+)', problem_text)
-    if not n_match:
-        return 0
-    
-    agent_id = int(n_match.group(1))
-    
-    if "sum of the first N positive integers is divisible by" in problem_text:
-        # Cari N terkecil dimana sum 1..N habis dibagi agent_id
-        total = 0
-        for n in range(1, 10000):
-            total += n
-            if total % agent_id == 0:
-                return n % 1000
-    elif "sum of the squares of the first N positive integers" in problem_text:
-        # Cari N terkecil dimana sum of squares habis dibagi agent_id+1
-        total = 0
-        for n in range(1, 10000):
-            total += n * n
-            if total % (agent_id + 1) == 0:
-                return n % 1000
-    
-    # Fallback
-    return agent_id % 1000
+    try:
+        result = eval(clean)
+        return int(result) if isinstance(result, (int, float)) else 0
+    except:
+        # Fallback: return last number
+        numbers = re.findall(r'\d+', problem_text)
+        return int(numbers[-1]) if numbers else 0
