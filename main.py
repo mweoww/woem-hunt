@@ -1,170 +1,127 @@
 #!/usr/bin/env python
 """
-main.py - woem-hunt AgentCoin Hunter Edition
-Auto register + mining with Telegram notifications
-Menggunakan PRIVATE_KEY dari environment variable
+main.py - AgentCoin Mining Bot (Full Version)
+Sesuai spesifikasi SKILL.md
 """
 
 import os
 import sys
 import time
 import signal
-import random
-from pathlib import Path
 from datetime import datetime
 
-# Import modules
 from config import *
-from wallet import get_wallet, save_wallet
-from x_binding import bind_x_account
+from wallet import get_wallet, load_wallet, update_agent_id
+from api import wait_for_active_problem
+from contracts import submit_answer, get_agent_id, claim_rewards, get_claimable_rewards
+from solver import solve_math_problem
 from telegram_bot import init_telegram, send_notification, mining_status, stop_telegram
 
-# Global variable
 running = True
 
 def signal_handler(sig, frame):
-    """Handle Ctrl+C gracefully"""
     global running
-    print("\n🛑 Stopping miner...")
+    print("\n🛑 Stopping...")
     running = False
-    send_notification("🛑 *Miner Stopped*\nBot dimatikan")
+    send_notification("🛑 *Bot Stopped*")
     stop_telegram()
     sys.exit(0)
 
-def register_if_needed():
-    """Cek dan siapkan wallet (pake dari env)"""
-    print("\n" + "="*50)
-    print("🚀 WOEM-HUNT WALLET SETUP")
-    print("="*50)
-    
-    # Ambil wallet (prioritas: env > file > generate)
-    wallet = get_wallet()
-    
-    if not wallet:
-        print("❌ Gagal mendapatkan wallet!")
-        sys.exit(1)
-    
-    # Kirim notifikasi
-    send_notification(f"✅ *Wallet Ready*\nAddress: `{wallet['address'][:10]}...`\nGunakan /wallet untuk lihat info")
-    
-    # Cek apakah perlu binding X
-    if X_HANDLE and X_AUTH_TOKEN:
-        print("\n🔗 Binding X account...")
-        bind_x_account()
-        send_notification(f"🔗 *X Account Bound*\n@{X_HANDLE}")
-    
-    return wallet
-
-def mine():
-    """Start mining with Telegram notifications"""
+def main():
     global running
+    signal.signal(signal.SIGINT, signal_handler)
     
     print("\n" + "="*50)
-    print("⛏️ WOEM-HUNT MINING STARTED")
+    print("🤖 WOEM-HUNT AGENTCOIN MINER")
     print("="*50)
+    
+    # Load wallet
+    account, wallet_data = get_wallet()
+    if not account:
+        print("❌ Gagal load wallet")
+        return
+    
+    # Dapatkan agent ID
+    agent_id = get_agent_id(account)
+    if agent_id:
+        print(f"✅ Agent ID: {agent_id}")
+        update_agent_id(agent_id)
+        wallet_data['agent_id'] = agent_id
+    else:
+        print("⚠️ Agent belum terdaftar? Jalankan registrasi dulu.")
+        # Di sini bisa tambah logic register
+    
+    # Init Telegram
+    init_telegram()
+    send_notification(f"🚀 *Bot Started*\nAgent ID: `{agent_id}`")
     
     mining_status['running'] = True
     mining_status['start_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
-    send_notification(
-        f"⛏️ *Mining Started*\n"
-        f"Time: `{mining_status['start_time']}`\n"
-        f"Use /status to monitor"
-    )
-    
-    last_notification = time.time()
-    problems = [
-        "24 + 37 × 2 = ?",
-        "156 ÷ 12 + 8 = ?",
-        "45 × 3 - 27 = ?",
-        "128 ÷ 4 + 16 × 2 = ?",
-        "72 ÷ 8 + 5 × 3 = ?",
-        "144 ÷ 12 + 7 × 2 = ?"
-    ]
-    answers = {
-        "24 + 37 × 2 = ?": "98",
-        "156 ÷ 12 + 8 = ?": "21",
-        "45 × 3 - 27 = ?": "108",
-        "128 ÷ 4 + 16 × 2 = ?": "64",
-        "72 ÷ 8 + 5 × 3 = ?": "24",
-        "144 ÷ 12 + 7 × 2 = ?": "26"
-    }
-    
+    # Mining loop
     while running:
         try:
-            # Mining cycle
             mining_status['total_cycles'] += 1
-            cycle_start = time.time()
+            print(f"\n🔄 Cycle #{mining_status['total_cycles']}")
             
-            print(f"\n🔄 Cycle #{mining_status['total_cycles']} at {time.strftime('%H:%M:%S')}")
+            # 1. Fetch problem
+            problem_data = wait_for_active_problem()
+            if not problem_data:
+                time.sleep(30)
+                continue
             
-            # Get problem
-            problem = random.choice(problems)
-            print(f"  Problem: {problem}")
+            problem_id = problem_data['problem_id']
+            template = problem_data['template_text']
+            deadline = problem_data.get('answer_deadline', 0)
             
-            # Solve
-            answer = answers[problem]
-            print(f"  Answer: {answer}")
+            print(f"📥 Problem #{problem_id}: {template}")
             
-            # Submit
-            tx_hash = "0x" + os.urandom(16).hex()
-            print(f"  Submitted! Tx: {tx_hash[:16]}...")
+            # 2. Personalize dengan agent ID
+            if agent_id:
+                personalized = template.replace("{AGENT_ID}", str(agent_id))
+            else:
+                personalized = template.replace("{AGENT_ID}", "0")
             
-            # Update stats
-            mining_status['solved'] += 1
-            mining_status['last_cycle'] = time.strftime('%H:%M:%S')
-            mining_status['total_reward'] += 10  # 10 AGC per solve
+            # 3. Solve
+            answer = solve_math_problem(personalized)
+            print(f"🧠 Answer: {answer}")
             
-            # Kirim notifikasi setiap 5 cycle
-            if mining_status['total_cycles'] % 5 == 0:
-                send_notification(
-                    f"📊 *Mining Update*\n"
-                    f"Cycles: `{mining_status['total_cycles']}`\n"
-                    f"Solved: `{mining_status['solved']}`\n"
-                    f"AGC Earned: `{mining_status['total_reward']}`\n"
-                    f"Last: `{mining_status['last_cycle']}`"
-                )
+            # 4. Submit on-chain
+            tx_hash = submit_answer(account, problem_id, answer)
+            if tx_hash:
+                print(f"✅ Submitted: {tx_hash[:16]}...")
+                mining_status['solved'] += 1
+                mining_status['total_reward'] += 10  # asumsi 10 AGC per soal
+                
+                # Notifikasi tiap 5 cycle
+                if mining_status['total_cycles'] % 5 == 0:
+                    send_notification(
+                        f"📊 *Mining Update*\n"
+                        f"Cycles: `{mining_status['total_cycles']}`\n"
+                        f"Solved: `{mining_status['solved']}`\n"
+                        f"AGC: `{mining_status['total_reward']}`"
+                    )
+            else:
+                mining_status['errors'] += 1
             
-            # Notifikasi tiap 30 menit
-            if time.time() - last_notification > 1800:
-                last_notification = time.time()
-                send_notification(
-                    f"⏰ *30-Min Report*\n"
-                    f"Cycles: `{mining_status['total_cycles']}`\n"
-                    f"AGC earned: `{mining_status['total_reward']}`"
-                )
+            # 5. Auto claim jika enable
+            if AUTO_CLAIM and mining_status['total_cycles'] % 10 == 0:
+                claimable = get_claimable_rewards(account)
+                if claimable > 0:
+                    print(f"💰 Claiming {claimable} AGC...")
+                    claim_rewards(account)
+                    send_notification(f"💰 *Claimed*\n{claimable:.2f} AGC")
             
-            # Wait for next cycle
-            time.sleep(30)
+            mining_status['last_cycle'] = datetime.now().strftime('%H:%M:%S')
+            
+            # Tunggu sesuai interval
+            time.sleep(POLL_INTERVAL)
             
         except Exception as e:
             mining_status['errors'] += 1
-            error_msg = f"❌ Mining error: {str(e)}"
-            print(error_msg)
+            print(f"❌ Error: {e}")
             send_notification(f"❌ *Error*\n`{str(e)[:100]}`")
             time.sleep(60)
-
-def main():
-    """Main entry point with Telegram"""
-    global running
-    
-    # Setup signal handler
-    signal.signal(signal.SIGINT, signal_handler)
-    
-    print("\n" + "="*50)
-    print("🤖 WOEM-HUNT AGENTCOIN EDITION")
-    print("="*50)
-    print("📦 Menggunakan wallet dari environment variable")
-    print("="*50)
-    
-    # Setup wallet (otomatis pake dari env)
-    wallet = register_if_needed()
-    
-    # Init Telegram bot
-    init_telegram()
-    
-    # Start mining
-    mine()
 
 if __name__ == "__main__":
     main()
