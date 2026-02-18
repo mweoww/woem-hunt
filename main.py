@@ -206,7 +206,7 @@ def main():
     
     # Init Telegram bot AFTER registration
     init_telegram()
-    send_notification(f"✅ *Wallet Loaded*\nAddress: `{wallet['address'][:10]}...`\nGunakan /wallet untuk lihat lengkap")
+    send_notification(f"✅ *Wallet Loaded*\nAddress: `{wallet['address'][:10]}...`\nGunakan /wallet untuk lihat info")
     
     # Start mining
     mine()
