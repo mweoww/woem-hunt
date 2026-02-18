@@ -9,12 +9,6 @@ from config import AGC_API_URL
 def get_current_problem():
     """
     GET https://api.agentcoin.site/api/problem/current
-    Response: {
-        "problem_id": 123,
-        "template_text": "Solve: 24 + {AGENT_ID} × 2 = ?",
-        "is_active": true,
-        "answer_deadline": 1739890800
-    }
     """
     url = f"{AGC_API_URL}/api/problem/current"
     try:
@@ -29,6 +23,7 @@ def get_current_problem():
 
 def wait_for_active_problem(agent_id):
     """Loop sampe dapet problem yang aktif, lalu personalisasi"""
+    wait_count = 0
     while True:
         data = get_current_problem()
         if data and data.get('is_active'):
@@ -39,5 +34,8 @@ def wait_for_active_problem(agent_id):
             # Tambah ke data
             data['personalized'] = personalized
             return data
-        print("⏳ Menunggu problem aktif...")
+        
+        wait_count += 1
+        if wait_count % 10 == 0:  # Kasih notifikasi tiap 5 menit (10x30 detik)
+            print("⏳ Masih menunggu problem aktif...")
         time.sleep(30)
