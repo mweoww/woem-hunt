@@ -6,6 +6,9 @@ import requests
 import time
 from config import AGC_API_URL
 
+# Cache problem yang sudah diproses
+processed_problems = set()
+
 def get_current_problem():
     """
     GET https://api.agentcoin.site/api/problem/current
@@ -22,20 +25,28 @@ def get_current_problem():
     return None
 
 def wait_for_active_problem(agent_id):
-    """Loop sampe dapet problem yang aktif, lalu personalisasi"""
+    """Loop sampe dapet problem yang aktif dan BELUM diproses"""
     wait_count = 0
     while True:
         data = get_current_problem()
         if data and data.get('is_active'):
+            problem_id = data['problem_id']
+            
+            # Skip problem yang sudah diproses
+            if problem_id in processed_problems:
+                time.sleep(10)
+                continue
+            
             # Personalisasi dengan agent ID
             template = data['template_text']
             personalized = template.replace("{AGENT_ID}", str(agent_id))
             
             # Tambah ke data
             data['personalized'] = personalized
+            processed_problems.add(problem_id)
             return data
         
         wait_count += 1
-        if wait_count % 10 == 0:  # Kasih notifikasi tiap 5 menit (10x30 detik)
-            print("⏳ Masih menunggu problem aktif...")
+        if wait_count % 10 == 0:
+            print("⏳ Masih menunggu problem baru...")
         time.sleep(30)
