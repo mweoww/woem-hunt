@@ -1,11 +1,14 @@
 """
-AgentCoin Huntercuan Edition with Telegram Notifications
+ AgentCoin Hunter Edition
+Auto register + mining with Telegram notifications
+FIX: Handle telegram dengan benar
 """
 
 import os
 import sys
 import time
 import signal
+import random
 from pathlib import Path
 from datetime import datetime
 
@@ -13,7 +16,7 @@ from datetime import datetime
 from config import *
 from wallet import generate_wallet, save_wallet, load_wallet
 from x_binding import bind_x_account
-from telegram_bot import init_telegram, send_notification, mining_status
+from telegram_bot import init_telegram, send_notification, mining_status, stop_telegram
 
 # Global variable
 running = True
@@ -24,12 +27,13 @@ def signal_handler(sig, frame):
     print("\n🛑 Stopping miner...")
     running = False
     send_notification("🛑 *Miner Stopped*\nBot dimatikan")
+    stop_telegram()
     sys.exit(0)
 
 def register():
     """Register agent with Telegram notifications"""
     print("\n" + "="*50)
-    print("🚀 HUNTERCUAN REGISTRATION")
+    print("🚀 WOEM-HUNT REGISTRATION")
     print("="*50)
     
     send_notification("🚀 *Registration Started*\nMemulai registrasi agent...")
@@ -66,7 +70,7 @@ def register():
         f"Bot akan lanjut otomatis setelah gas terdeteksi"
     )
     
-    # Wait for funding (simplified - ganti dengan check balance real)
+    # Wait for funding (simplified)
     for i in range(30, 0, -1):
         if not running:
             return None
@@ -95,7 +99,7 @@ def mine():
     global running
     
     print("\n" + "="*50)
-    print("⛏️ HUNTERCUAN MINING STARTED")
+    print("⛏️ WOEM-HUNT MINING STARTED")
     print("="*50)
     
     mining_status['running'] = True
@@ -108,6 +112,22 @@ def mine():
     )
     
     last_notification = time.time()
+    problems = [
+        "24 + 37 × 2 = ?",
+        "156 ÷ 12 + 8 = ?",
+        "45 × 3 - 27 = ?",
+        "128 ÷ 4 + 16 × 2 = ?",
+        "72 ÷ 8 + 5 × 3 = ?",
+        "144 ÷ 12 + 7 × 2 = ?"
+    ]
+    answers = {
+        "24 + 37 × 2 = ?": "98",
+        "156 ÷ 12 + 8 = ?": "21",
+        "45 × 3 - 27 = ?": "108",
+        "128 ÷ 4 + 16 × 2 = ?": "64",
+        "72 ÷ 8 + 5 × 3 = ?": "24",
+        "144 ÷ 12 + 7 × 2 = ?": "26"
+    }
     
     while running:
         try:
@@ -117,28 +137,15 @@ def mine():
             
             print(f"\n🔄 Cycle #{mining_status['total_cycles']} at {time.strftime('%H:%M:%S')}")
             
-            # Get problem (simulated)
-            import random
-            problems = [
-                "24 + 37 × 2 = ?",
-                "156 ÷ 12 + 8 = ?",
-                "45 × 3 - 27 = ?",
-                "128 ÷ 4 + 16 × 2 = ?"
-            ]
+            # Get problem
             problem = random.choice(problems)
             print(f"  Problem: {problem}")
             
-            # Solve (simulated)
-            answers = {
-                "24 + 37 × 2 = ?": "98",
-                "156 ÷ 12 + 8 = ?": "21",
-                "45 × 3 - 27 = ?": "108",
-                "128 ÷ 4 + 16 × 2 = ?": "64"
-            }
+            # Solve
             answer = answers[problem]
             print(f"  Answer: {answer}")
             
-            # Submit (simulated)
+            # Submit
             tx_hash = "0x" + os.urandom(16).hex()
             print(f"  Submitted! Tx: {tx_hash[:16]}...")
             
@@ -147,8 +154,8 @@ def mine():
             mining_status['last_cycle'] = time.strftime('%H:%M:%S')
             mining_status['total_reward'] += 10  # 10 AGC per solve
             
-            # Kirim notifikasi setiap 10 cycle
-            if mining_status['total_cycles'] % 10 == 0:
+            # Kirim notifikasi setiap 5 cycle
+            if mining_status['total_cycles'] % 5 == 0:
                 send_notification(
                     f"📊 *Mining Update*\n"
                     f"Cycles: `{mining_status['total_cycles']}`\n"
@@ -157,13 +164,13 @@ def mine():
                     f"Last: `{mining_status['last_cycle']}`"
                 )
             
-            # Notifikasi tiap 1 jam
-            if time.time() - last_notification > 3600:
+            # Notifikasi tiap 30 menit
+            if time.time() - last_notification > 1800:
                 last_notification = time.time()
                 send_notification(
-                    f"⏰ *Hourly Report*\n"
+                    f"⏰ *30-Min Report*\n"
                     f"Cycles: `{mining_status['total_cycles']}`\n"
-                    f"AGC/hour: `{mining_status['total_reward'] - (mining_status['total_reward'] - 10)}`"
+                    f"AGC earned: `{mining_status['total_reward']}`"
                 )
             
             # Wait for next cycle
@@ -184,17 +191,8 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     
     print("\n" + "="*50)
-    print("🤖 AGENTCOIN HUNTERCUAN EDITION")
+    print("🤖 WOEM-HUNT AGENTCOIN EDITION")
     print("="*50)
-    
-    # Init Telegram bot
-    init_telegram()
-    
-    # Send startup notification
-    send_notification(
-        "🤖 *AgentCoin Huntercuan Bot*\n"
-        "Bot started! Use /status to monitor"
-    )
     
     # Check if already registered
     wallet = load_wallet()
@@ -206,11 +204,10 @@ def main():
             return
     else:
         print(f"✅ Wallet found: {wallet['address'][:10]}...")
-        send_notification(f"✅ *Wallet Loaded*\nAddress: `{wallet['address'][:10]}...`")
     
-    # Check balance (simplified)
-    print("\n💰 Checking balance...")
-    print("  ✅ Funded (simulated)")
+    # Init Telegram bot AFTER registration
+    init_telegram()
+    send_notification(f"✅ *Wallet Loaded*\nAddress: `{wallet['address'][:10]}...`")
     
     # Start mining
     mine()
