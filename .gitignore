@@ -1,42 +1,13 @@
-# Environment
 .env
 .env.*
-
-# Python
 __pycache__/
 *.py[cod]
 *$py.class
 venv/
 env/
-ENV/
-
-# Data
 data/
 *.state.json
 *.log
-wallet_address.txt
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Railway
-.railway/
-*.pid
-*.pid.lock
-
-# Docker
-.dockerignore
-!Dockerfile
+.idea/
+.vscode/
