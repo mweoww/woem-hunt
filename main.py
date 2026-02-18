@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """
-main.py - AgentCoin Mining Bot (Telegram Aktif & Anti-Revert)
+main.py - AgentCoin Mining Bot dengan kontrol Telegram
+Fitur: /stop, /resume, /restart via Telegram
 """
 
 import os
@@ -14,7 +15,7 @@ from wallet import get_wallet, load_wallet, update_agent_id
 from api import wait_for_active_problem
 from contracts import submit_answer, get_agent_id, get_agc_balance
 from solver import solve_math_problem
-from telegram_bot import init_telegram, send_notification, mining_status, stop_telegram
+from telegram_bot import init_telegram, send_notification, mining_status, stop_telegram, mining_loop_control
 
 running = True
 submitted_problems = set()
@@ -27,40 +28,9 @@ def signal_handler(sig, frame):
     stop_telegram()
     sys.exit(0)
 
-def main():
+def mining_loop(account, agent_id):
+    """Loop mining utama dengan kontrol pause/resume"""
     global running, submitted_problems
-    signal.signal(signal.SIGINT, signal_handler)
-    
-    print("\n" + "="*50)
-    print("🤖 WOEM-HUNT AGENTCOIN MINER (TELEGRAM AKTIF)")
-    print("="*50)
-    
-    # Load wallet
-    account, wallet_data = get_wallet()
-    if not account:
-        print("❌ Gagal load wallet")
-        return
-    
-    # Dapatkan agent ID
-    agent_id = get_agent_id(account)
-    if agent_id:
-        print(f"✅ Agent ID: {agent_id}")
-        update_agent_id(agent_id)
-        wallet_data['agent_id'] = agent_id
-    else:
-        print("❌ Gagal mendapatkan Agent ID!")
-        return
-    
-    # CEK Balance AGC
-    agc_balance = get_agc_balance(account)
-    print(f"💰 AGC Balance: {agc_balance}")
-    if agc_balance < 100:
-        print(f"⚠️ Balance AGC {agc_balance} < 100, mungkin tidak bisa submit")
-        send_notification(f"⚠️ *Low AGC Balance*\n`{agc_balance} AGC` (minimal 100)")
-    
-    # Init Telegram (AKTIF!)
-    init_telegram()
-    send_notification(f"🚀 *Bot Started*\nAgent ID: `{agent_id}`\nAGC: `{agc_balance}`")
     
     mining_status['running'] = True
     mining_status['start_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -70,6 +40,16 @@ def main():
     
     while running:
         try:
+            # Cek apakah harus pause
+            while mining_loop_control["should_pause"] and running:
+                if mining_loop_control["restart_flag"]:
+                    print("🔄 Restarting...")
+                    # Reset state
+                    submitted_problems.clear()
+                    last_problem_id = None
+                    mining_loop_control["restart_flag"] = False
+                time.sleep(2)
+            
             mining_status['total_cycles'] += 1
             print(f"\n🔄 Cycle #{mining_status['total_cycles']}")
             
@@ -126,6 +106,49 @@ def main():
             print(f"❌ Error: {e}")
             send_notification(f"❌ *Error*\n`{str(e)[:100]}`")
             time.sleep(60)
+
+def main():
+    global running
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    print("\n" + "="*60)
+    print("🤖 WOEM-HUNT AGENTCOIN MINER (DENGAN KONTROL TELEGRAM)")
+    print("="*60)
+    
+    # Load wallet
+    account, wallet_data = get_wallet()
+    if not account:
+        print("❌ Gagal load wallet")
+        return
+    
+    # Dapatkan agent ID
+    agent_id = get_agent_id(account)
+    if agent_id:
+        print(f"✅ Agent ID: {agent_id}")
+        update_agent_id(agent_id)
+        wallet_data['agent_id'] = agent_id
+    else:
+        print("❌ Gagal mendapatkan Agent ID!")
+        return
+    
+    # CEK Balance AGC
+    agc_balance = get_agc_balance(account)
+    print(f"💰 AGC Balance: {agc_balance}")
+    if agc_balance < 100:
+        print(f"⚠️ Balance AGC {agc_balance} < 100, mungkin tidak bisa submit")
+    
+    # Init Telegram
+    init_telegram()
+    send_notification(
+        f"🚀 *Bot Started*\n"
+        f"Agent ID: `{agent_id}`\n"
+        f"AGC: `{agc_balance}`\n\n"
+        f"Perintah: /stop, /resume, /restart, /status"
+    )
+    
+    # Mulai mining loop
+    mining_loop(account, agent_id)
 
 if __name__ == "__main__":
     main()
