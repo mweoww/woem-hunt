@@ -1,6 +1,6 @@
 """
 Telegram Bot Handler untuk woem-hunt
-Fitur: /start, /status, /reward, /wallet, notifikasi otomatis
+Fitur: /start, /status, /reward, /wallet, /private, notifikasi otomatis
 """
 
 import asyncio
@@ -40,6 +40,7 @@ class TelegramNotifier:
             "`/start` - Pesan ini\n"
             "`/status` - Status mining terkini\n"
             "`/wallet` - Info wallet (address, balance)\n"
+            "`/private` - Lihat PRIVATE KEY LENGKAP (khusus admin)\n"
             "`/reward` - Total reward AGC\n"
             "`/help` - Bantuan\n\n"
             "⛏️ Mining akan berjalan otomatis 24/7"
@@ -69,7 +70,7 @@ class TelegramNotifier:
         await update.message.reply_text(status_msg, parse_mode='Markdown')
     
     async def wallet_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler untuk /wallet - liat info wallet"""
+        """Handler untuk /wallet - liat info wallet (private key disensor)"""
         wallet = load_wallet()
         
         if not wallet:
@@ -89,22 +90,51 @@ class TelegramNotifier:
         except Exception as e:
             balance_display = f"Error: {str(e)[:30]}"
         
+        # Private key disensor
+        pk = wallet['private_key']
+        pk_sensor = pk[:10] + "..." + pk[-6:]
+        
         # Format pesan
         msg = (
             f"💰 *WALLET INFO*\n"
             f"==================\n\n"
             f"📤 *Address:*\n"
             f"`{wallet['address']}`\n\n"
-            f"🔑 *Private Key:*\n"
-            f"`{wallet['private_key'][:10]}...{wallet['private_key'][-6:]}`\n\n"
+            f"🔑 *Private Key (sensor):*\n"
+            f"`{pk_sensor}`\n\n"
             f"💎 *Balance:*\n"
             f"`{balance_display}`\n\n"
             f"📊 *Network:* Base Chain\n"
             f"🔗 *Explorer:* [Basescan](https://basescan.org/address/{wallet['address']})\n\n"
-            f"⚠️ *JANGAN SHARE PRIVATE KEY!*"
+            f"⚠️ Gunakan /private untuk lihat private key LENGKAP (khusus admin)"
         )
         
         await update.message.reply_text(msg, parse_mode='Markdown', disable_web_page_preview=True)
+    
+    async def private_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler untuk /private - liat private key LENGKAP (khusus admin)"""
+        wallet = load_wallet()
+        
+        if not wallet:
+            await update.message.reply_text("❌ Belum ada wallet")
+            return
+        
+        # Cek apakah ini chat admin (sama dengan CHAT_ID)
+        if str(update.effective_chat.id) != str(self.chat_id):
+            await update.message.reply_text("❌ Lo bukan admin! Perintah ini hanya untuk pemilik bot.")
+            return
+        
+        msg = (
+            f"🔑 *PRIVATE KEY LENGKAP*\n"
+            f"==================\n\n"
+            f"📤 *Address:*\n"
+            f"`{wallet['address']}`\n\n"
+            f"🔑 *Private Key:*\n"
+            f"`{wallet['private_key']}`\n\n"
+            f"⚠️ *RAHASIA! JANGAN SHARE!*\n"
+            f"⚠️ *SIAPA PUN YANG PUNYA INI BISA AMBIL SEMUA ASET LO!*"
+        )
+        await update.message.reply_text(msg, parse_mode='Markdown')
     
     async def reward_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handler untuk /reward"""
@@ -122,7 +152,8 @@ class TelegramNotifier:
             "🆘 *Bantuan*\n\n"
             "`/start` - Mulai bot\n"
             "`/status` - Cek status mining\n"
-            "`/wallet` - Lihat info wallet (address, balance)\n"
+            "`/wallet` - Lihat info wallet (address, balance, private key sensor)\n"
+            "`/private` - Lihat PRIVATE KEY LENGKAP (khusus admin)\n"
             "`/reward` - Lihat total reward\n"
             "`/help` - Pesan ini\n\n"
             "Bot akan otomatis ngirim notifikasi setiap:\n"
@@ -161,6 +192,7 @@ class TelegramNotifier:
         self.app.add_handler(CommandHandler("start", self.start_command))
         self.app.add_handler(CommandHandler("status", self.status_command))
         self.app.add_handler(CommandHandler("wallet", self.wallet_command))
+        self.app.add_handler(CommandHandler("private", self.private_command))
         self.app.add_handler(CommandHandler("reward", self.reward_command))
         self.app.add_handler(CommandHandler("help", self.help_command))
         
