@@ -1,56 +1,26 @@
-# Environment variables (JANGAN PERNAH COMMIT INI!)
+# Environment
 .env
 .env.*
-!.env.example
 
-# Python cache
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.Python
-
-# Virtual environment
 venv/
 env/
-ENV/
-env.bak/
-venv.bak/
 
-# Data files (state wallet, logs)
+# Data
 data/
 *.state.json
 *.log
-logs/
+wallet_address.txt
 
-# IDE settings
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
 
-# OS generated files
+# OS
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
-
-# Railway specific
-.railway/
-*.pid
-*.pid.lock
-
-# Docker
-.dockerignore
-Dockerfile*
-!Dockerfile
-
-# Testing
-.coverage
-coverage.xml
-*.cover
-.pytest_cache/
