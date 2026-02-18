@@ -85,7 +85,11 @@ agent_registry = w3.eth.contract(
 )
 
 def submit_answer(account, problem_id, answer):
-    """Submit answer ke on-chain - FIX VERSION"""
+    """Submit answer ke on-chain"""
+    if not account:
+        print("❌ Account tidak valid")
+        return None
+        
     try:
         tx = problem_manager.functions.submitAnswer(
             problem_id, 
@@ -99,7 +103,7 @@ def submit_answer(account, problem_id, answer):
         })
         
         signed = account.sign_transaction(tx)
-        # FIX: pake raw_transaction (underscore) bukan rawTransaction
+        # FIX: pake raw_transaction (underscore)
         tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
         return tx_hash.hex()
     except Exception as e:
@@ -108,23 +112,30 @@ def submit_answer(account, problem_id, answer):
 
 def get_agent_id(account):
     """Dapatkan agent ID dari registry"""
+    if not account:
+        return None
     try:
         agent_id = agent_registry.functions.getAgentId(account.address).call()
         return agent_id
-    except:
+    except Exception as e:
+        print(f"⚠️ Gagal get agent ID: {e}")
         return None
 
 def get_claimable_rewards(account):
     """Cek reward yang bisa di-claim"""
+    if not account:
+        return 0
     try:
         amount = reward_distributor.functions.getClaimable(account.address).call()
         return amount / 1e18  # AGC 18 decimals
     except Exception as e:
-        print(f"⚠️ Gagal cek claimable: {e}")
+        # Ini normal kalau belum ada reward
         return 0
 
 def claim_rewards(account):
     """Claim reward"""
+    if not account:
+        return None
     try:
         tx = reward_distributor.functions.claimRewards().build_transaction({
             'from': account.address,
