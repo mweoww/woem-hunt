@@ -18,4 +18,5 @@ COPY . .
 # Create data directory
 RUN mkdir -p /app/data
 
-CMD ["python", "main.py"]
+# Run with unbuffered output
+CMD ["python", "-u", "main.py"]
