@@ -3,10 +3,7 @@ import sys
 from pathlib import Path
 
 # LANGSUNG baca dari environment variable (Railway)
-# JANGAN PAKE load_dotenv dulu
-
 print("🔍 DEBUG: Reading environment variables...")
-print(f"  All env keys: {list(os.environ.keys())}")
 
 # X (Twitter)
 X_HANDLE = os.environ.get("X_HANDLE", "")
@@ -28,6 +25,6 @@ print(f"  ANTHROPIC: {'✅' if ANTHROPIC_AUTH_TOKEN else '❌'}")
 print(f"  TELEGRAM: {'✅' if TELEGRAM_BOT_TOKEN else '❌'}")
 print("="*50)
 
-# Kalau masih kosong, kasih warning tapi jangan exit dulu
+# Kalau masih kosong, kasih warning
 if not X_HANDLE or not X_AUTH_TOKEN:
     print("⚠️  WARNING: X config missing, tapi lanjut dulu buat debug")
