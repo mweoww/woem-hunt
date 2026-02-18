@@ -1,5 +1,6 @@
 """
-telegram_bot.py - Telegram Bot Handler (RESPONSIF)
+telegram_bot.py - Telegram Bot Handler dengan kontrol mining
+Fitur: /start, /status, /wallet, /balance, /reward, /claim, /stop, /resume, /restart
 """
 
 import os
@@ -42,12 +43,21 @@ if os.name != 'nt':
 # ===== GLOBAL STATUS =====
 mining_status = {
     "running": False,
+    "paused": False,
     "total_cycles": 0,
     "solved": 0,
     "errors": 0,
     "last_cycle": None,
     "total_reward": 0,
-    "start_time": None
+    "start_time": None,
+    "pause_time": None
+}
+
+# Referensi ke main loop (akan di-set dari main.py)
+mining_loop_control = {
+    "should_run": True,
+    "should_pause": False,
+    "restart_flag": False
 }
 
 class TelegramNotifier:
@@ -61,12 +71,18 @@ class TelegramNotifier:
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = (
             "🤖 *WOEM-HUNT AGENTCOIN BOT*\n\n"
-            "`/start` - Pesan ini\n"
+            "📊 *Perintah Mining:*\n"
             "`/status` - Status mining\n"
-            "`/wallet` - Info wallet & balance\n"
+            "`/stop` - Hentikan mining sementara\n"
+            "`/resume` - Lanjutkan mining\n"
+            "`/restart` - Restart mining\n\n"
+            "💰 *Perintah Wallet:*\n"
+            "`/wallet` - Info wallet\n"
             "`/balance` - Cek balance AGC\n"
             "`/reward` - Total reward\n"
-            "`/claim` - Claim reward\n"
+            "`/claim` - Claim reward\n\n"
+            "❓ *Lainnya:*\n"
+            "`/start` - Pesan ini\n"
             "`/help` - Bantuan"
         )
         await update.message.reply_text(msg, parse_mode='Markdown')
@@ -75,17 +91,96 @@ class TelegramNotifier:
         wallet_data = load_wallet()
         agent_id = wallet_data.get('agent_id', 'Unknown') if wallet_data else 'No wallet'
         
+        # Tentukan status
+        if not mining_status['running']:
+            status_emoji = "⏸️"
+            status_text = "Stopped"
+        elif mining_status['paused']:
+            status_emoji = "⏸️"
+            status_text = "Paused"
+        else:
+            status_emoji = "✅"
+            status_text = "Running"
+        
+        # Hitung uptime
+        uptime = "N/A"
+        if mining_status['start_time'] and mining_status['running']:
+            start = datetime.strptime(mining_status['start_time'], '%Y-%m-%d %H:%M:%S')
+            delta = datetime.now() - start
+            hours = delta.seconds // 3600
+            minutes = (delta.seconds % 3600) // 60
+            uptime = f"{hours}h {minutes}m"
+        
         msg = (
             f"📊 *MINING STATUS*\n"
             f"`{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n\n"
             f"🔹 *Agent ID:* `{agent_id}`\n"
-            f"🔹 *Status:* {'✅ Running' if mining_status['running'] else '⏸️ Idle'}\n"
+            f"🔹 *Status:* {status_emoji} `{status_text}`\n"
+            f"🔹 *Uptime:* `{uptime}`\n"
             f"🔹 *Cycles:* `{mining_status['total_cycles']}`\n"
             f"🔹 *Solved:* `{mining_status['solved']}`\n"
             f"🔹 *Errors:* `{mining_status['errors']}`\n"
-            f"🔹 *AGC Mined:* `{mining_status['total_reward']}`"
+            f"🔹 *AGC Mined:* `{mining_status['total_reward']}`\n"
         )
+        
+        if mining_status['last_cycle']:
+            msg += f"🔹 *Last Cycle:* `{mining_status['last_cycle']}`"
+        
         await update.message.reply_text(msg, parse_mode='Markdown')
+
+    async def stop_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Hentikan mining sementara"""
+        global mining_loop_control
+        if not mining_status['running']:
+            await update.message.reply_text("❌ Mining sudah berhenti")
+            return
+        
+        if mining_status['paused']:
+            await update.message.reply_text("⚠️ Mining sudah di-pause")
+            return
+        
+        mining_loop_control["should_pause"] = True
+        mining_status['paused'] = True
+        mining_status['pause_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        await update.message.reply_text("⏸️ *Mining dihentikan sementara*\nGunakan /resume untuk melanjutkan", parse_mode='Markdown')
+
+    async def resume_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Lanjutkan mining"""
+        global mining_loop_control
+        if not mining_status['running']:
+            await update.message.reply_text("❌ Mining belum dimulai")
+            return
+        
+        if not mining_status['paused']:
+            await update.message.reply_text("⚠️ Mining sedang berjalan")
+            return
+        
+        mining_loop_control["should_pause"] = False
+        mining_status['paused'] = False
+        
+        await update.message.reply_text("▶️ *Mining dilanjutkan*", parse_mode='Markdown')
+
+    async def restart_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Restart mining (pause lalu resume otomatis)"""
+        global mining_loop_control
+        
+        await update.message.reply_text("🔄 *Merestart mining...*", parse_mode='Markdown')
+        
+        # Set flag restart
+        mining_loop_control["restart_flag"] = True
+        mining_loop_control["should_pause"] = True
+        mining_status['paused'] = True
+        
+        # Tunggu sebentar
+        await asyncio.sleep(3)
+        
+        # Resume
+        mining_loop_control["should_pause"] = False
+        mining_status['paused'] = False
+        mining_loop_control["restart_flag"] = False
+        
+        await update.message.reply_text("✅ *Restart selesai, mining dilanjutkan*", parse_mode='Markdown')
 
     async def wallet_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         wallet_data = load_wallet()
@@ -156,13 +251,16 @@ class TelegramNotifier:
         self.app = Application.builder().token(self.token).build()
         self.app.add_handler(CommandHandler("start", self.start_command))
         self.app.add_handler(CommandHandler("status", self.status_command))
+        self.app.add_handler(CommandHandler("stop", self.stop_command))
+        self.app.add_handler(CommandHandler("resume", self.resume_command))
+        self.app.add_handler(CommandHandler("restart", self.restart_command))
         self.app.add_handler(CommandHandler("wallet", self.wallet_command))
         self.app.add_handler(CommandHandler("balance", self.balance_command))
         self.app.add_handler(CommandHandler("reward", self.reward_command))
         self.app.add_handler(CommandHandler("claim", self.claim_command))
         self.app.add_handler(CommandHandler("help", self.help_command))
         
-        print("🤖 Telegram bot started!")
+        print("🤖 Telegram bot started with control commands!")
         await self.app.initialize()
         await self.app.start()
         await self.app.updater.start_polling()
