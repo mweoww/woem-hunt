@@ -1,3 +1,7 @@
+"""
+x_binding.py - Binding X account (simulasi)
+"""
+
 import requests
 from config import X_HANDLE, X_AUTH_TOKEN
 
