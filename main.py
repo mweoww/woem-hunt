@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 """
 main.py - AgentCoin Mining Bot (Full Version)
-Sesuai spesifikasi SKILL.md
 """
 
 import os
@@ -49,7 +48,6 @@ def main():
         wallet_data['agent_id'] = agent_id
     else:
         print("❌ Gagal mendapatkan Agent ID! Pastikan wallet sudah terdaftar.")
-        print("   Jalankan registrasi dulu atau cek di Basescan.")
         return
     
     # Init Telegram
@@ -72,10 +70,9 @@ def main():
                 continue
             
             problem_id = problem_data['problem_id']
-            personalized = problem_data['personalized']  # udah di-personalize
-            deadline = problem_data.get('answer_deadline', 0)
+            personalized = problem_data['personalized']
             
-            print(f"📥 Problem #{problem_id}: {personalized}")
+            print(f"📥 Problem #{problem_id}")
             
             # 2. Solve
             answer = solve_math_problem(personalized)
@@ -98,7 +95,7 @@ def main():
                     )
             else:
                 mining_status['errors'] += 1
-                print("❌ Submit gagal, coba lagi nanti")
+                print("❌ Submit gagal")
             
             # 4. Auto claim jika enable
             if AUTO_CLAIM and mining_status['total_cycles'] % 10 == 0:
@@ -107,7 +104,7 @@ def main():
                     print(f"💰 Claiming {claimable:.2f} AGC...")
                     tx = claim_rewards(account)
                     if tx:
-                        send_notification(f"💰 *Claimed*\n{claimable:.2f} AGC\nTx: `{tx[:16]}...`")
+                        send_notification(f"💰 *Claimed*\n{claimable:.2f} AGC")
             
             mining_status['last_cycle'] = datetime.now().strftime('%H:%M:%S')
             
