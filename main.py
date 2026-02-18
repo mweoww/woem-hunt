@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-main.py - AgentCoin Mining Bot (Anti Revert Version)
+main.py - AgentCoin Mining Bot (Anti-Revert Version)
 """
 
 import os
@@ -51,7 +51,7 @@ def main():
         print("❌ Gagal mendapatkan Agent ID! Pastikan wallet sudah terdaftar.")
         return
     
-    # Init Telegram (COMMENT DULU SAMPAI STABIL)
+    # Init Telegram (AKTIFKAN LAGI KALO UDAH STABIL)
     # init_telegram()
     # send_notification(f"🚀 *Bot Started*\nAgent ID: `{agent_id}`")
     
@@ -79,9 +79,9 @@ def main():
             # CEK: Problem sama berulang?
             if problem_id == last_problem_id:
                 same_problem_count += 1
-                if same_problem_count > 3:
-                    print(f"⚠️ Problem #{problem_id} muncul terus, tunggu 5 menit...")
-                    time.sleep(300)
+                if same_problem_count > 2:
+                    print(f"⚠️ Problem #{problem_id} muncul terus, tunggu 2 menit...")
+                    time.sleep(120)
                     same_problem_count = 0
                     continue
             else:
@@ -100,16 +100,21 @@ def main():
             answer = solve_math_problem(personalized)
             print(f"🧠 Answer: {answer}")
             
-            # 3. Submit on-chain (dengan pengecekan)
+            # 3. Submit on-chain (SKIP pengecekan problem dulu)
             tx_hash = submit_answer(account, problem_id, answer)
             if tx_hash:
                 print(f"✅ Submitted: {tx_hash[:16]}...")
                 mining_status['solved'] += 1
                 mining_status['total_reward'] += 10
                 submitted_problems.add(problem_id)  # Tandai sudah submit
+                
+                # Kirim notifikasi sukses
+                # send_notification(f"✅ *Mined*\nProblem #{problem_id}\nAGC: +10")
             else:
                 mining_status['errors'] += 1
                 print("❌ Submit gagal, coba problem lain")
+                # Tetap tandai sebagai gagal biar gak diulang terus
+                submitted_problems.add(problem_id)
             
             mining_status['last_cycle'] = datetime.now().strftime('%H:%M:%S')
             
