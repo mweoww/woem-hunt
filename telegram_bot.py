@@ -1,6 +1,5 @@
 """
-telegram_bot.py - Notifikasi dan command Telegram
-DENGAN LOCK biar gak dobel instance
+telegram_bot.py - Telegram Bot Handler (RESPONSIF)
 """
 
 import os
@@ -15,16 +14,15 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 from wallet import get_balance_eth, get_balance_agc, load_wallet
+from contracts import get_claimable_rewards, get_agc_balance
 
 # ===== SINGLE INSTANCE LOCK =====
 LOCK_FILE = "/tmp/woemhunt_telegram.lock"
 
 def check_single_instance():
-    """Cek apakah sudah ada instance lain yang jalan"""
     try:
         fp = open(LOCK_FILE, 'w')
         fcntl.flock(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        
         def remove_lock():
             try:
                 fcntl.flock(fp, fcntl.LOCK_UN)
@@ -32,18 +30,16 @@ def check_single_instance():
                 os.remove(LOCK_FILE)
             except:
                 pass
-        
         atexit.register(remove_lock)
         return True
     except IOError:
         print("❌ Another telegram instance is already running. Exiting.")
         sys.exit(1)
 
-# Panggil lock
-if os.name != 'nt':  # Only on Unix
+if os.name != 'nt':
     check_single_instance()
-# ===== END LOCK =====
 
+# ===== GLOBAL STATUS =====
 mining_status = {
     "running": False,
     "total_cycles": 0,
@@ -68,6 +64,7 @@ class TelegramNotifier:
             "`/start` - Pesan ini\n"
             "`/status` - Status mining\n"
             "`/wallet` - Info wallet & balance\n"
+            "`/balance` - Cek balance AGC\n"
             "`/reward` - Total reward\n"
             "`/claim` - Claim reward\n"
             "`/help` - Bantuan"
@@ -109,6 +106,21 @@ class TelegramNotifier:
         )
         await update.message.reply_text(msg, parse_mode='Markdown')
 
+    async def balance_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        wallet_data = load_wallet()
+        if not wallet_data:
+            await update.message.reply_text("❌ Belum ada wallet")
+            return
+        
+        from contracts import get_agc_balance
+        from wallet import get_wallet
+        account, _ = get_wallet()
+        if account:
+            agc = get_agc_balance(account)
+            await update.message.reply_text(f"💰 *AGC Balance:* `{agc:.2f} AGC`", parse_mode='Markdown')
+        else:
+            await update.message.reply_text("❌ Gagal get account")
+
     async def reward_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = (
             f"💰 *AGC REWARD*\n\n"
@@ -117,7 +129,7 @@ class TelegramNotifier:
         await update.message.reply_text(msg, parse_mode='Markdown')
 
     async def claim_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text("⏳ Claim via /claim belum diimplement, gunakan auto-claim di settings")
+        await update.message.reply_text("⏳ Claim via /claim akan segera diimplement")
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await self.start_command(update, context)
@@ -145,6 +157,7 @@ class TelegramNotifier:
         self.app.add_handler(CommandHandler("start", self.start_command))
         self.app.add_handler(CommandHandler("status", self.status_command))
         self.app.add_handler(CommandHandler("wallet", self.wallet_command))
+        self.app.add_handler(CommandHandler("balance", self.balance_command))
         self.app.add_handler(CommandHandler("reward", self.reward_command))
         self.app.add_handler(CommandHandler("claim", self.claim_command))
         self.app.add_handler(CommandHandler("help", self.help_command))
