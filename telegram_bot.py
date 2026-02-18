@@ -1,7 +1,6 @@
 """
 Telegram Bot Handler untuk woem-hunt
-Fitur: /start, /status, /reward, notifikasi otomatis
-FIX: Handle asyncio dengan benar tanpa thread error
+Fitur: /start, /status, /reward, /wallet, notifikasi otomatis
 """
 
 import asyncio
@@ -40,6 +39,7 @@ class TelegramNotifier:
             "📊 *Commands:*\n"
             "`/start` - Pesan ini\n"
             "`/status` - Status mining terkini\n"
+            "`/wallet` - Info wallet (address, balance)\n"
             "`/reward` - Total reward AGC\n"
             "`/help` - Bantuan\n\n"
             "⛏️ Mining akan berjalan otomatis 24/7"
@@ -68,6 +68,44 @@ class TelegramNotifier:
             
         await update.message.reply_text(status_msg, parse_mode='Markdown')
     
+    async def wallet_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler untuk /wallet - liat info wallet"""
+        wallet = load_wallet()
+        
+        if not wallet:
+            await update.message.reply_text("❌ Belum ada wallet. Jalankan registrasi dulu.")
+            return
+        
+        # Cek balance real dari Base chain
+        try:
+            from web3 import Web3
+            w3 = Web3(Web3.HTTPProvider('https://mainnet.base.org'))
+            if w3.is_connected():
+                balance_wei = w3.eth.get_balance(wallet['address'])
+                balance_eth = w3.from_wei(balance_wei, 'ether')
+                balance_display = f"{balance_eth:.6f} ETH"
+            else:
+                balance_display = "Gagal konek ke chain"
+        except Exception as e:
+            balance_display = f"Error: {str(e)[:30]}"
+        
+        # Format pesan
+        msg = (
+            f"💰 *WALLET INFO*\n"
+            f"==================\n\n"
+            f"📤 *Address:*\n"
+            f"`{wallet['address']}`\n\n"
+            f"🔑 *Private Key:*\n"
+            f"`{wallet['private_key'][:10]}...{wallet['private_key'][-6:]}`\n\n"
+            f"💎 *Balance:*\n"
+            f"`{balance_display}`\n\n"
+            f"📊 *Network:* Base Chain\n"
+            f"🔗 *Explorer:* [Basescan](https://basescan.org/address/{wallet['address']})\n\n"
+            f"⚠️ *JANGAN SHARE PRIVATE KEY!*"
+        )
+        
+        await update.message.reply_text(msg, parse_mode='Markdown', disable_web_page_preview=True)
+    
     async def reward_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handler untuk /reward"""
         reward_msg = (
@@ -84,6 +122,7 @@ class TelegramNotifier:
             "🆘 *Bantuan*\n\n"
             "`/start` - Mulai bot\n"
             "`/status` - Cek status mining\n"
+            "`/wallet` - Lihat info wallet (address, balance)\n"
             "`/reward` - Lihat total reward\n"
             "`/help` - Pesan ini\n\n"
             "Bot akan otomatis ngirim notifikasi setiap:\n"
@@ -121,6 +160,7 @@ class TelegramNotifier:
         # Add handlers
         self.app.add_handler(CommandHandler("start", self.start_command))
         self.app.add_handler(CommandHandler("status", self.status_command))
+        self.app.add_handler(CommandHandler("wallet", self.wallet_command))
         self.app.add_handler(CommandHandler("reward", self.reward_command))
         self.app.add_handler(CommandHandler("help", self.help_command))
         
