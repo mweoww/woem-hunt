@@ -1,5 +1,5 @@
 """
-Telegram Bot Handler untuk woem-hunt
+telegram_bot.py - Telegram Bot Handler untuk woem-hunt
 Fitur: /start, /status, /reward, /wallet, /private, notifikasi otomatis
 """
 
