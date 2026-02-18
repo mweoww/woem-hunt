@@ -1,7 +1,12 @@
 """
 telegram_bot.py - Notifikasi dan command Telegram
+DENGAN LOCK biar gak dobel instance
 """
 
+import os
+import sys
+import fcntl
+import atexit
 import asyncio
 import threading
 import time
@@ -10,7 +15,34 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 from wallet import get_balance_eth, get_balance_agc, load_wallet
-from contracts import get_claimable_rewards, get_agent_id
+
+# ===== SINGLE INSTANCE LOCK =====
+LOCK_FILE = "/tmp/woemhunt_telegram.lock"
+
+def check_single_instance():
+    """Cek apakah sudah ada instance lain yang jalan"""
+    try:
+        fp = open(LOCK_FILE, 'w')
+        fcntl.flock(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        
+        def remove_lock():
+            try:
+                fcntl.flock(fp, fcntl.LOCK_UN)
+                fp.close()
+                os.remove(LOCK_FILE)
+            except:
+                pass
+        
+        atexit.register(remove_lock)
+        return True
+    except IOError:
+        print("❌ Another telegram instance is already running. Exiting.")
+        sys.exit(1)
+
+# Panggil lock
+if os.name != 'nt':  # Only on Unix
+    check_single_instance()
+# ===== END LOCK =====
 
 mining_status = {
     "running": False,
@@ -66,7 +98,6 @@ class TelegramNotifier:
         
         eth = get_balance_eth()
         agc = get_balance_agc()
-        claimable = get_claimable_rewards(None)  # butuh account
         
         msg = (
             f"💰 *WALLET INFO*\n\n"
@@ -74,8 +105,7 @@ class TelegramNotifier:
             f"🔑 *Agent ID:* `{wallet_data.get('agent_id', 'Unknown')}`\n\n"
             f"💎 *Balance:*\n"
             f"  ETH: `{eth:.6f}`\n"
-            f"  AGC: `{agc:.2f}`\n"
-            f"  Claimable: `{claimable:.2f}`"
+            f"  AGC: `{agc:.2f}`"
         )
         await update.message.reply_text(msg, parse_mode='Markdown')
 
@@ -83,13 +113,11 @@ class TelegramNotifier:
         msg = (
             f"💰 *AGC REWARD*\n\n"
             f"Total mined: `{mining_status['total_reward']} AGC`\n"
-            f"Claimable: `{get_claimable_rewards(None):.2f}`"
         )
         await update.message.reply_text(msg, parse_mode='Markdown')
 
     async def claim_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text("⏳ Processing claim...")
-        # Akan diimplement di main
+        await update.message.reply_text("⏳ Claim via /claim belum diimplement, gunakan auto-claim di settings")
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await self.start_command(update, context)
