@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 """
-woem-hunt AgentCoin Hunter Edition
+main.py - woem-hunt AgentCoin Hunter Edition
 Auto register + mining with Telegram notifications
+Menggunakan PRIVATE_KEY dari environment variable
 """
 
 import os
@@ -14,7 +15,7 @@ from datetime import datetime
 
 # Import modules
 from config import *
-from wallet import generate_wallet, save_wallet, load_wallet
+from wallet import get_wallet, save_wallet
 from x_binding import bind_x_account
 from telegram_bot import init_telegram, send_notification, mining_status, stop_telegram
 
@@ -30,67 +31,28 @@ def signal_handler(sig, frame):
     stop_telegram()
     sys.exit(0)
 
-def register():
-    """Register agent with Telegram notifications"""
+def register_if_needed():
+    """Cek dan siapkan wallet (pake dari env)"""
     print("\n" + "="*50)
-    print("🚀 WOEM-HUNT REGISTRATION")
+    print("🚀 WOEM-HUNT WALLET SETUP")
     print("="*50)
     
-    send_notification("🚀 *Registration Started*\nMemulai registrasi agent...")
+    # Ambil wallet (prioritas: env > file > generate)
+    wallet = get_wallet()
     
-    # Check config
-    if not X_HANDLE or not X_AUTH_TOKEN:
-        error_msg = "❌ Missing X config!"
-        print(error_msg)
-        send_notification(f"❌ *Registration Failed*\n{error_msg}")
+    if not wallet:
+        print("❌ Gagal mendapatkan wallet!")
         sys.exit(1)
     
-    # Generate wallet (otomatis tampil address)
-    print("\n📝 Generating wallet...")
-    wallet = generate_wallet()
-    
     # Kirim notifikasi
-    send_notification(f"📝 *Wallet Generated*\nAddress: `{wallet['address'][:10]}...`\nGunakan /wallet untuk lihat lengkap")
+    send_notification(f"✅ *Wallet Ready*\nAddress: `{wallet['address'][:10]}...`\nGunakan /wallet untuk lihat info")
     
-    # Bind X
-    print("\n🔗 Binding X account...")
-    bind_x_account()
-    send_notification(f"🔗 *X Account Bound*\n@{X_HANDLE}")
+    # Cek apakah perlu binding X
+    if X_HANDLE and X_AUTH_TOKEN:
+        print("\n🔗 Binding X account...")
+        bind_x_account()
+        send_notification(f"🔗 *X Account Bound*\n@{X_HANDLE}")
     
-    # On-chain registration
-    print("\n⛓️ Registering on Base chain...")
-    print("  ⚠️  This requires ETH gas!")
-    print(f"  📤 Transfer ETH to: {wallet['address']}")
-    
-    send_notification(
-        f"⛓️ *Ready for Registration*\n"
-        f"Transfer ETH ke address di bawah:\n"
-        f"`{wallet['address']}`\n\n"
-        f"Bot akan lanjut otomatis setelah gas terdeteksi"
-    )
-    
-    # Wait for funding (simplified)
-    for i in range(30, 0, -1):
-        if not running:
-            return None
-        print(f"  ⏳ Waiting for gas... {i}s remaining", end='\r')
-        time.sleep(1)
-    
-    print("\n  ✅ Gas detected!")
-    
-    # Simulasi register on-chain
-    time.sleep(2)
-    tx_hash = "0x" + os.urandom(16).hex()
-    print(f"  ✅ Registered! Tx: {tx_hash[:16]}...")
-    
-    send_notification(
-        f"✅ *Registration Complete!*\n"
-        f"Tx: `{tx_hash[:16]}...`\n\n"
-        f"⛏️ Starting mining..."
-    )
-    
-    print("\n✅ Registration complete!")
-    print("="*50)
     return wallet
 
 def mine():
@@ -192,21 +154,14 @@ def main():
     print("\n" + "="*50)
     print("🤖 WOEM-HUNT AGENTCOIN EDITION")
     print("="*50)
+    print("📦 Menggunakan wallet dari environment variable")
+    print("="*50)
     
-    # Check if already registered
-    wallet = load_wallet()
+    # Setup wallet (otomatis pake dari env)
+    wallet = register_if_needed()
     
-    if not wallet:
-        print("📝 No wallet found. Starting registration...")
-        wallet = register()
-        if not wallet:
-            return
-    else:
-        print(f"✅ Wallet found: {wallet['address'][:10]}...")
-    
-    # Init Telegram bot AFTER registration
+    # Init Telegram bot
     init_telegram()
-    send_notification(f"✅ *Wallet Loaded*\nAddress: `{wallet['address'][:10]}...`\nGunakan /wallet untuk lihat info")
     
     # Start mining
     mine()
