@@ -17,7 +17,7 @@ def bind_x_account():
     # response = requests.post(
     #     "https://api.twitter.com/2/tweets",
     #     headers=headers,
-    #     json={"text": f"Verifying my account for AgentCoin #Huntercuan"}
+    #     json={"text": f"Verifying my account for AgentCoin #woemhunt"}
     # )
     
     print("✅ X account bound successfully (simulated)")
