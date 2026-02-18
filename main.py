@@ -41,15 +41,16 @@ def main():
         print("❌ Gagal load wallet")
         return
     
-    # Dapatkan agent ID
+    # Dapatkan agent ID dari blockchain
     agent_id = get_agent_id(account)
     if agent_id:
         print(f"✅ Agent ID: {agent_id}")
         update_agent_id(agent_id)
         wallet_data['agent_id'] = agent_id
     else:
-        print("⚠️ Agent belum terdaftar? Jalankan registrasi dulu.")
-        # Di sini bisa tambah logic register
+        print("❌ Gagal mendapatkan Agent ID! Pastikan wallet sudah terdaftar.")
+        print("   Jalankan registrasi dulu atau cek di Basescan.")
+        return
     
     # Init Telegram
     init_telegram()
@@ -64,29 +65,23 @@ def main():
             mining_status['total_cycles'] += 1
             print(f"\n🔄 Cycle #{mining_status['total_cycles']}")
             
-            # 1. Fetch problem
-            problem_data = wait_for_active_problem()
+            # 1. Fetch problem dengan agent_id
+            problem_data = wait_for_active_problem(agent_id)
             if not problem_data:
                 time.sleep(30)
                 continue
             
             problem_id = problem_data['problem_id']
-            template = problem_data['template_text']
+            personalized = problem_data['personalized']  # udah di-personalize
             deadline = problem_data.get('answer_deadline', 0)
             
-            print(f"📥 Problem #{problem_id}: {template}")
+            print(f"📥 Problem #{problem_id}: {personalized}")
             
-            # 2. Personalize dengan agent ID
-            if agent_id:
-                personalized = template.replace("{AGENT_ID}", str(agent_id))
-            else:
-                personalized = template.replace("{AGENT_ID}", "0")
-            
-            # 3. Solve
+            # 2. Solve
             answer = solve_math_problem(personalized)
             print(f"🧠 Answer: {answer}")
             
-            # 4. Submit on-chain
+            # 3. Submit on-chain
             tx_hash = submit_answer(account, problem_id, answer)
             if tx_hash:
                 print(f"✅ Submitted: {tx_hash[:16]}...")
@@ -103,14 +98,16 @@ def main():
                     )
             else:
                 mining_status['errors'] += 1
+                print("❌ Submit gagal, coba lagi nanti")
             
-            # 5. Auto claim jika enable
+            # 4. Auto claim jika enable
             if AUTO_CLAIM and mining_status['total_cycles'] % 10 == 0:
                 claimable = get_claimable_rewards(account)
                 if claimable > 0:
-                    print(f"💰 Claiming {claimable} AGC...")
-                    claim_rewards(account)
-                    send_notification(f"💰 *Claimed*\n{claimable:.2f} AGC")
+                    print(f"💰 Claiming {claimable:.2f} AGC...")
+                    tx = claim_rewards(account)
+                    if tx:
+                        send_notification(f"💰 *Claimed*\n{claimable:.2f} AGC\nTx: `{tx[:16]}...`")
             
             mining_status['last_cycle'] = datetime.now().strftime('%H:%M:%S')
             
