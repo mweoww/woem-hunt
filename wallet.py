@@ -15,16 +15,16 @@ def generate_wallet():
     # Simpan ke file
     save_wallet(wallet_data)
     
-    # Tampilkan dengan jelas
-    print("\n" + "="*60)
+    # Tampilkan dengan jelas (INI PENTING!)
+    print("\n" + "="*70)
     print("🔐 WALLET ADDRESS - TRANSFER ETH KE SINI!")
-    print("="*60)
+    print("="*70)
     print(f"📤 Address    : {account.address}")
-    print(f"🔑 Private Key: {account.key.hex()}")
-    print("="*60)
+    print(f"🔑 Private Key: {account.key.hex()}")  # <-- LENGKAP!
+    print("="*70)
     print("⚠️  Kirim minimal 0.001 ETH ke address di atas")
     print("⚠️  Pastikan pake BASE chain (bukan Ethereum mainnet)")
-    print("="*60 + "\n")
+    print("="*70 + "\n")
     
     return wallet_data
 
