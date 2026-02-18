@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-main.py - AgentCoin Mining Bot (Anti-Revert Version)
+main.py - AgentCoin Mining Bot (Telegram Aktif & Anti-Revert)
 """
 
 import os
@@ -12,12 +12,12 @@ from datetime import datetime
 from config import *
 from wallet import get_wallet, load_wallet, update_agent_id
 from api import wait_for_active_problem
-from contracts import submit_answer, get_agent_id, claim_rewards, get_claimable_rewards, check_already_submitted
+from contracts import submit_answer, get_agent_id, get_agc_balance
 from solver import solve_math_problem
 from telegram_bot import init_telegram, send_notification, mining_status, stop_telegram
 
 running = True
-submitted_problems = set()  # Track submitted problems
+submitted_problems = set()
 
 def signal_handler(sig, frame):
     global running
@@ -32,7 +32,7 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     
     print("\n" + "="*50)
-    print("🤖 WOEM-HUNT AGENTCOIN MINER (ANTI-REVERT)")
+    print("🤖 WOEM-HUNT AGENTCOIN MINER (TELEGRAM AKTIF)")
     print("="*50)
     
     # Load wallet
@@ -41,19 +41,26 @@ def main():
         print("❌ Gagal load wallet")
         return
     
-    # Dapatkan agent ID dari blockchain
+    # Dapatkan agent ID
     agent_id = get_agent_id(account)
     if agent_id:
         print(f"✅ Agent ID: {agent_id}")
         update_agent_id(agent_id)
         wallet_data['agent_id'] = agent_id
     else:
-        print("❌ Gagal mendapatkan Agent ID! Pastikan wallet sudah terdaftar.")
+        print("❌ Gagal mendapatkan Agent ID!")
         return
     
-    # Init Telegram (AKTIFKAN LAGI KALO UDAH STABIL)
-    # init_telegram()
-    # send_notification(f"🚀 *Bot Started*\nAgent ID: `{agent_id}`")
+    # CEK Balance AGC
+    agc_balance = get_agc_balance(account)
+    print(f"💰 AGC Balance: {agc_balance}")
+    if agc_balance < 100:
+        print(f"⚠️ Balance AGC {agc_balance} < 100, mungkin tidak bisa submit")
+        send_notification(f"⚠️ *Low AGC Balance*\n`{agc_balance} AGC` (minimal 100)")
+    
+    # Init Telegram (AKTIF!)
+    init_telegram()
+    send_notification(f"🚀 *Bot Started*\nAgent ID: `{agent_id}`\nAGC: `{agc_balance}`")
     
     mining_status['running'] = True
     mining_status['start_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -61,13 +68,12 @@ def main():
     last_problem_id = None
     same_problem_count = 0
     
-    # Mining loop
     while running:
         try:
             mining_status['total_cycles'] += 1
             print(f"\n🔄 Cycle #{mining_status['total_cycles']}")
             
-            # 1. Fetch problem dengan agent_id
+            # Fetch problem
             problem_data = wait_for_active_problem(agent_id)
             if not problem_data:
                 time.sleep(30)
@@ -76,11 +82,11 @@ def main():
             problem_id = problem_data['problem_id']
             personalized = problem_data['personalized']
             
-            # CEK: Problem sama berulang?
+            # Skip problem yang sama
             if problem_id == last_problem_id:
                 same_problem_count += 1
                 if same_problem_count > 2:
-                    print(f"⚠️ Problem #{problem_id} muncul terus, tunggu 2 menit...")
+                    print(f"⚠️ Problem #{problem_id} muncul terus, tunggu...")
                     time.sleep(120)
                     same_problem_count = 0
                     continue
@@ -88,42 +94,37 @@ def main():
                 same_problem_count = 0
                 last_problem_id = problem_id
             
-            # CEK: Udah pernah di-submit?
             if problem_id in submitted_problems:
-                print(f"⚠️ Problem #{problem_id} sudah pernah di-submit, skip...")
+                print(f"⚠️ Problem #{problem_id} sudah diproses, skip")
                 time.sleep(POLL_INTERVAL)
                 continue
             
             print(f"📥 Problem #{problem_id}")
             
-            # 2. Solve
+            # Solve
             answer = solve_math_problem(personalized)
             print(f"🧠 Answer: {answer}")
             
-            # 3. Submit on-chain (SKIP pengecekan problem dulu)
+            # Submit
             tx_hash = submit_answer(account, problem_id, answer)
             if tx_hash:
                 print(f"✅ Submitted: {tx_hash[:16]}...")
                 mining_status['solved'] += 1
                 mining_status['total_reward'] += 10
-                submitted_problems.add(problem_id)  # Tandai sudah submit
-                
-                # Kirim notifikasi sukses
-                # send_notification(f"✅ *Mined*\nProblem #{problem_id}\nAGC: +10")
+                submitted_problems.add(problem_id)
+                send_notification(f"✅ *Mined*\nProblem #{problem_id}\nAGC: +10")
             else:
                 mining_status['errors'] += 1
-                print("❌ Submit gagal, coba problem lain")
-                # Tetap tandai sebagai gagal biar gak diulang terus
-                submitted_problems.add(problem_id)
+                print("❌ Submit gagal")
+                submitted_problems.add(problem_id)  # Tandai gagal juga
             
             mining_status['last_cycle'] = datetime.now().strftime('%H:%M:%S')
-            
-            # Tunggu sesuai interval
             time.sleep(POLL_INTERVAL)
             
         except Exception as e:
             mining_status['errors'] += 1
             print(f"❌ Error: {e}")
+            send_notification(f"❌ *Error*\n`{str(e)[:100]}`")
             time.sleep(60)
 
 if __name__ == "__main__":
