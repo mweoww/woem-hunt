@@ -27,11 +27,17 @@ def get_current_problem():
         print(f"⚠️ API request failed: {e}")
     return None
 
-def wait_for_active_problem():
-    """Loop sampe dapet problem yang aktif"""
+def wait_for_active_problem(agent_id):
+    """Loop sampe dapet problem yang aktif, lalu personalisasi"""
     while True:
         data = get_current_problem()
         if data and data.get('is_active'):
+            # Personalisasi dengan agent ID
+            template = data['template_text']
+            personalized = template.replace("{AGENT_ID}", str(agent_id))
+            
+            # Tambah ke data
+            data['personalized'] = personalized
             return data
         print("⏳ Menunggu problem aktif...")
         time.sleep(30)
