@@ -1,7 +1,7 @@
+#!/usr/bin/env python
 """
- AgentCoin Hunter Edition
+woem-hunt AgentCoin Hunter Edition
 Auto register + mining with Telegram notifications
-FIX: Handle telegram dengan benar
 """
 
 import os
@@ -45,19 +45,17 @@ def register():
         send_notification(f"❌ *Registration Failed*\n{error_msg}")
         sys.exit(1)
     
-    # Generate wallet
+    # Generate wallet (otomatis tampil address)
     print("\n📝 Generating wallet...")
     wallet = generate_wallet()
-    print(f"  Address: {wallet['address']}")
-    send_notification(f"📝 *Wallet Generated*\nAddress: `{wallet['address'][:10]}...`")
+    
+    # Kirim notifikasi
+    send_notification(f"📝 *Wallet Generated*\nAddress: `{wallet['address'][:10]}...`\nGunakan /wallet untuk lihat lengkap")
     
     # Bind X
     print("\n🔗 Binding X account...")
     bind_x_account()
     send_notification(f"🔗 *X Account Bound*\n@{X_HANDLE}")
-    
-    # Save wallet
-    save_wallet(wallet)
     
     # On-chain registration
     print("\n⛓️ Registering on Base chain...")
@@ -66,7 +64,8 @@ def register():
     
     send_notification(
         f"⛓️ *Ready for Registration*\n"
-        f"Transfer ETH ke:\n`{wallet['address']}`\n\n"
+        f"Transfer ETH ke address di bawah:\n"
+        f"`{wallet['address']}`\n\n"
         f"Bot akan lanjut otomatis setelah gas terdeteksi"
     )
     
@@ -207,7 +206,7 @@ def main():
     
     # Init Telegram bot AFTER registration
     init_telegram()
-    send_notification(f"✅ *Wallet Loaded*\nAddress: `{wallet['address'][:10]}...`")
+    send_notification(f"✅ *Wallet Loaded*\nAddress: `{wallet['address'][:10]}...`\nGunakan /wallet untuk lihat lengkap")
     
     # Start mining
     mine()
