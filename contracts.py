@@ -1,6 +1,6 @@
 """
 contracts.py - Interaksi dengan smart contract di Base
-FIX: ABI lengkap sesuai contract asli
+FIX: Tangkap revert reason dengan jelas
 """
 
 from web3 import Web3
@@ -18,7 +18,6 @@ from config import (
 w3 = Web3(Web3.HTTPProvider(BASE_RPC_URL))
 
 # ===== PROBLEM MANAGER =====
-# ABI lengkap berdasarkan error decoding
 PROBLEM_MANAGER_ABI = [
     {
         "inputs": [
@@ -88,6 +87,17 @@ AGENT_REGISTRY_ABI = [
     }
 ]
 
+# ===== AGC TOKEN =====
+AGC_TOKEN_ABI = [
+    {
+        "constant": True,
+        "inputs": [{"name": "_owner", "type": "address"}],
+        "name": "balanceOf",
+        "outputs": [{"name": "balance", "type": "uint256"}],
+        "type": "function"
+    }
+]
+
 # Init contracts
 problem_manager = w3.eth.contract(
     address=PROBLEM_MANAGER_ADDRESS,
@@ -104,115 +114,110 @@ agent_registry = w3.eth.contract(
     abi=AGENT_REGISTRY_ABI
 )
 
+agc_token = w3.eth.contract(
+    address=AGC_TOKEN_ADDRESS,
+    abi=AGC_TOKEN_ABI
+)
+
+def get_agc_balance(account):
+    """Cek balance AGC token"""
+    if not account:
+        return 0
+    try:
+        balance = agc_token.functions.balanceOf(account.address).call()
+        return balance / 1e18
+    except:
+        return 0
+
 def check_problem_status(problem_id):
     """Cek status problem sebelum submit"""
     try:
-        # Panggil getProblem
         result = problem_manager.functions.getProblem(problem_id).call()
         
-        # Handle berbagai kemungkinan return length
-        if len(result) == 5:
-            templateHash, state, deadline, winnerCount, totalSubmissions = result
-            print(f"  - Winner count: {winnerCount}")
-            print(f"  - Total submissions: {totalSubmissions}")
-        elif len(result) == 3:
-            templateHash, state, deadline = result
-            print(f"  - (Return length 3)")
-        else:
-            print(f"  - Return length: {len(result)}")
-            # Asumsikan posisi state dan deadline
-            state = result[1] if len(result) > 1 else 0
-            deadline = result[2] if len(result) > 2 else 0
-        
-        # State mapping
-        state_names = ["Open", "Verification", "Settled", "Expired"]
-        state_name = state_names[state] if state < len(state_names) else f"Unknown({state})"
-        
-        print(f"🔍 Problem #{problem_id}:")
-        print(f"  - State: {state_name}")
-        print(f"  - Deadline: {deadline} ({time.ctime(deadline) if deadline > 0 else 'No deadline'})")
-        
-        # Cek apakah masih bisa submit
-        if state != 0:
-            print(f"❌ Problem sudah tidak bisa di-submit (state={state})")
-            return False
-        if deadline > 0 and time.time() > deadline:
-            print(f"❌ Problem sudah lewat deadline")
-            return False
+        if len(result) >= 3:
+            state = result[1]
+            deadline = result[2]
             
-        return True
+            state_names = ["Open", "Verification", "Settled", "Expired"]
+            state_name = state_names[state] if state < len(state_names) else f"Unknown({state})"
+            
+            print(f"🔍 Problem #{problem_id}: {state_name}, Deadline: {deadline}")
+            
+            if state != 0:
+                print(f"❌ Problem state = {state_name}, bukan Open")
+                return False
+            if deadline > 0 and time.time() > deadline:
+                print(f"❌ Deadline sudah lewat")
+                return False
+            return True
     except Exception as e:
         print(f"⚠️ Gagal cek problem: {e}")
-        print(f"  - Error type: {type(e).__name__}")
-        # Kalo gagal cek, asumsikan boleh submit (tapi dengan warning)
-        print("  - Asumsikan problem boleh di-submit (risk of revert)")
-        return True
+    return True  # Allow if can't check
 
 def check_already_submitted(account, problem_id):
-    """Cek apakah sudah pernah submit untuk problem ini"""
+    """Cek apakah sudah pernah submit"""
     try:
         result = problem_manager.functions.getSubmission(problem_id, account.address).call()
-        
-        if len(result) == 3:
-            submitted, answer, isWinner = result
-            print(f"  - Already submitted: {submitted}, answer: {answer}, isWinner: {isWinner}")
-        elif len(result) == 2:
-            submitted, answer = result
-            print(f"  - Already submitted: {submitted}, answer: {answer}")
-        else:
-            submitted = result[0] if len(result) > 0 else False
-            
+        submitted = result[0] if result else False
         if submitted:
-            print(f"⚠️ Already submitted answer for problem #{problem_id}")
+            print(f"⚠️ Already submitted for problem #{problem_id}")
             return True
-        return False
-    except Exception as e:
-        print(f"⚠️ Gagal cek submission: {e}")
-        # Kalo gagal cek, asumsikan belum submit
-        return False
+    except:
+        pass
+    return False
 
 def submit_answer(account, problem_id, answer):
-    """Submit answer ke on-chain dengan pengecekan lengkap"""
+    """Submit answer dengan penangkapan revert reason yang jelas"""
     if not account:
-        print("❌ Account tidak valid")
         return None
     
-    # CEK 1: Problem masih open? (opsional - bisa diskip kalo sering error)
-    # if not check_problem_status(problem_id):
-    #     print("❌ Skip submit karena problem tidak valid")
-    #     return None
+    # CEK 1: Balance AGC (minimal 100)
+    agc_balance = get_agc_balance(account)
+    print(f"💰 AGC Balance: {agc_balance}")
+    if agc_balance < 100:
+        print(f"❌ Balance AGC {agc_balance} < 100, tidak bisa submit")
+        return None
     
-    # CEK 2: Udah pernah submit?
+    # CEK 2: Problem masih open?
+    if not check_problem_status(problem_id):
+        return None
+    
+    # CEK 3: Udah pernah submit?
     if check_already_submitted(account, problem_id):
-        print("❌ Skip submit karena sudah pernah")
         return None
     
     try:
-        # Estimate gas dulu
+        # Estimate gas
         try:
             gas_estimate = problem_manager.functions.submitAnswer(
                 problem_id, answer
             ).estimate_gas({'from': account.address})
             print(f"  - Estimated gas: {gas_estimate}")
         except Exception as e:
-            print(f"⚠️ Gas estimation failed: {e}")
-            gas_estimate = 200000  # fallback
+            print(f"⚠️ Gas estimation failed, coba tangkap revert reason...")
+            # Coba simulasi untuk dapat revert reason
+            try:
+                problem_manager.functions.submitAnswer(problem_id, answer).call({
+                    'from': account.address
+                })
+            except Exception as call_error:
+                print(f"🔍 REVERT REASON: {call_error}")
+                return None
+            gas_estimate = 300000
         
         tx = problem_manager.functions.submitAnswer(
-            problem_id, 
-            answer
+            problem_id, answer
         ).build_transaction({
             'from': account.address,
             'nonce': w3.eth.get_transaction_count(account.address),
-            'gas': int(gas_estimate * 1.5),  # +50% buffer buat jaga-jaga
+            'gas': int(gas_estimate * 1.5),
             'gasPrice': w3.eth.gas_price,
-            'chainId': 8453  # Base mainnet
+            'chainId': 8453
         })
         
         signed = account.sign_transaction(tx)
         tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
         
-        # Tunggu receipt
         print(f"⏳ Menunggu konfirmasi...")
         receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=60)
         
@@ -223,10 +228,9 @@ def submit_answer(account, problem_id, answer):
             print(f"❌ FAILED! Status: {receipt.status}")
             # Coba ambil revert reason
             try:
-                # replay transaction to get error
                 w3.eth.call(tx, block_identifier='latest')
-            except Exception as e:
-                print(f"🔍 Revert reason: {str(e)}")
+            except Exception as call_error:
+                print(f"🔍 REVERT REASON: {call_error}")
             return None
             
     except Exception as e:
@@ -234,29 +238,23 @@ def submit_answer(account, problem_id, answer):
         return None
 
 def get_agent_id(account):
-    """Dapatkan agent ID dari registry"""
     if not account:
         return None
     try:
-        agent_id = agent_registry.functions.getAgentId(account.address).call()
-        return agent_id
-    except Exception as e:
-        print(f"⚠️ Gagal get agent ID: {e}")
+        return agent_registry.functions.getAgentId(account.address).call()
+    except:
         return None
 
 def get_claimable_rewards(account):
-    """Cek reward yang bisa di-claim"""
     if not account:
         return 0
     try:
         amount = reward_distributor.functions.getClaimable(account.address).call()
         return amount / 1e18
-    except Exception as e:
-        # Ini normal kalau belum ada reward
+    except:
         return 0
 
 def claim_rewards(account):
-    """Claim reward"""
     if not account:
         return None
     try:
@@ -267,7 +265,6 @@ def claim_rewards(account):
             'gasPrice': w3.eth.gas_price,
             'chainId': 8453
         })
-        
         signed = account.sign_transaction(tx)
         tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
         return tx_hash.hex()
