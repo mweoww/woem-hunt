@@ -8,7 +8,8 @@ from config import (
     BASE_RPC_URL,
     PROBLEM_MANAGER_ADDRESS,
     REWARD_DISTRIBUTOR_ADDRESS,
-    AGENT_REGISTRY_ADDRESS
+    AGENT_REGISTRY_ADDRESS,
+    AGC_TOKEN_ADDRESS
 )
 
 # Inisialisasi Web3
@@ -84,7 +85,7 @@ agent_registry = w3.eth.contract(
 )
 
 def submit_answer(account, problem_id, answer):
-    """Submit answer ke on-chain"""
+    """Submit answer ke on-chain - FIX VERSION"""
     try:
         tx = problem_manager.functions.submitAnswer(
             problem_id, 
@@ -98,7 +99,8 @@ def submit_answer(account, problem_id, answer):
         })
         
         signed = account.sign_transaction(tx)
-        tx_hash = w3.eth.send_raw_transaction(signed.rawTransaction)
+        # FIX: pake raw_transaction (underscore) bukan rawTransaction
+        tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
         return tx_hash.hex()
     except Exception as e:
         print(f"❌ Submit error: {e}")
@@ -117,7 +119,8 @@ def get_claimable_rewards(account):
     try:
         amount = reward_distributor.functions.getClaimable(account.address).call()
         return amount / 1e18  # AGC 18 decimals
-    except:
+    except Exception as e:
+        print(f"⚠️ Gagal cek claimable: {e}")
         return 0
 
 def claim_rewards(account):
@@ -132,7 +135,7 @@ def claim_rewards(account):
         })
         
         signed = account.sign_transaction(tx)
-        tx_hash = w3.eth.send_raw_transaction(signed.rawTransaction)
+        tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
         return tx_hash.hex()
     except Exception as e:
         print(f"❌ Claim error: {e}")
